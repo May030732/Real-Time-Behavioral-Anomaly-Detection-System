@@ -3,7 +3,7 @@ import cv2
 
 model = YOLO("yolo11n-pose.pt")
 
-# 先試內建相機
+# 內建相機
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
 print("Camera Open:", cap.isOpened())
