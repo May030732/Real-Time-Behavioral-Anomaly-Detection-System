@@ -10,7 +10,13 @@ from pathlib import Path
 # ==============================
 
 MODEL_PATH = "yolo11n-pose.pt"
-CSV_OUTPUT_PATH = r"C:\Users\USER\Desktop\學校功課\專題\Real-Time-Behavioral-Anomaly-Detection-System-main\Real-Time-Behavioral-Anomaly-Detection-System-main\pose_test_CSV\test01.csv"
+from datetime import datetime
+
+SAVE_FOLDER = r"C:\Users\USER\Desktop\學校功課\專題\Real-Time-Behavioral-Anomaly-Detection-System-main\Real-Time-Behavioral-Anomaly-Detection-System-main\pose_test_CSV"
+
+filename = datetime.now().strftime("pose_%Y%m%d_%H%M%S.csv")
+
+CSV_OUTPUT_PATH = str(Path(SAVE_FOLDER) / filename)
 
 # 關鍵點最低信心度
 CONFIDENCE_THRESHOLD = 0.5
