@@ -1,0 +1,38 @@
+Accuracy: 0.703799
+Balanced accuracy: 0.563493
+
+Train participants: [np.str_('P001'), np.str_('P002'), np.str_('P003'), np.str_('P004'), np.str_('P005'), np.str_('P006'), np.str_('P007'), np.str_('P008'), np.str_('P009'), np.str_('P011'), np.str_('P012'), np.str_('P014'), np.str_('P015'), np.str_('P016'), np.str_('P017'), np.str_('P018'), np.str_('P021'), np.str_('P022'), np.str_('P024'), np.str_('P025'), np.str_('P026'), np.str_('P028'), np.str_('P029'), np.str_('P033'), np.str_('P034'), np.str_('P035'), np.str_('P036'), np.str_('P038'), np.str_('P039'), np.str_('P040'), np.str_('P041'), np.str_('P042'), np.str_('P043'), np.str_('P044'), np.str_('P045'), np.str_('P047'), np.str_('P048'), np.str_('P049'), np.str_('P050'), np.str_('P051'), np.str_('P052'), np.str_('P053'), np.str_('P054'), np.str_('P055'), np.str_('P058'), np.str_('P059'), np.str_('P060'), np.str_('P061'), np.str_('P062'), np.str_('P063'), np.str_('P064'), np.str_('P066'), np.str_('P067'), np.str_('P069'), np.str_('P070'), np.str_('P071'), np.str_('P072'), np.str_('P073'), np.str_('P074'), np.str_('P075'), np.str_('P076'), np.str_('P078'), np.str_('P080'), np.str_('P081'), np.str_('P084'), np.str_('P087'), np.str_('P088'), np.str_('P089'), np.str_('P090'), np.str_('P091'), np.str_('P092'), np.str_('P093'), np.str_('P094'), np.str_('P095'), np.str_('P096'), np.str_('P097'), np.str_('P098'), np.str_('P100'), np.str_('P101'), np.str_('P102'), np.str_('P103'), np.str_('P104'), np.str_('P105'), np.str_('P106'), np.str_('P107'), np.str_('P108'), np.str_('P109'), np.str_('P110'), np.str_('P111'), np.str_('P113'), np.str_('P114'), np.str_('P116'), np.str_('P117'), np.str_('P118'), np.str_('P119'), np.str_('P120'), np.str_('P121'), np.str_('P122'), np.str_('P123'), np.str_('P124'), np.str_('P126'), np.str_('P127'), np.str_('P128'), np.str_('P129'), np.str_('P130'), np.str_('P131'), np.str_('P132'), np.str_('P135'), np.str_('P136'), np.str_('P137'), np.str_('P139'), np.str_('P140'), np.str_('P141'), np.str_('P142'), np.str_('P145'), np.str_('P146'), np.str_('P148'), np.str_('P149'), np.str_('P150'), np.str_('P151')]
+Test participants: [np.str_('P010'), np.str_('P013'), np.str_('P019'), np.str_('P020'), np.str_('P023'), np.str_('P027'), np.str_('P030'), np.str_('P031'), np.str_('P032'), np.str_('P037'), np.str_('P046'), np.str_('P056'), np.str_('P057'), np.str_('P065'), np.str_('P068'), np.str_('P077'), np.str_('P079'), np.str_('P082'), np.str_('P083'), np.str_('P085'), np.str_('P086'), np.str_('P099'), np.str_('P112'), np.str_('P115'), np.str_('P125'), np.str_('P133'), np.str_('P134'), np.str_('P138'), np.str_('P143'), np.str_('P144'), np.str_('P147')]
+
+Classification report:
+              precision    recall  f1-score   support
+
+       light     0.5980    0.6180    0.6078     93000
+    moderate     0.6377    0.7674    0.6965     78856
+   sedentary     0.9378    0.7671    0.8439     93000
+    vigorous     0.1867    0.1015    0.1315      4846
+
+    accuracy                         0.7038    269702
+   macro avg     0.5901    0.5635    0.5700    269702
+weighted avg     0.7194    0.7038    0.7066    269702
+
+Confusion matrix labels:
+[np.str_('light'), np.str_('moderate'), np.str_('sedentary'), np.str_('vigorous')]
+
+Confusion matrix:
+[[57472 30307  4089  1132]
+ [16717 60511   639   989]
+ [20783   854 71341    22]
+ [ 1134  3220     0   492]]
+
+Top features:
+x_std: 0.08863579
+z_std: 0.07512091
+mag_std: 0.06756574
+x_range: 0.06614474
+y_std: 0.06263484
+z_range: 0.06148340
+y_range: 0.05292327
+mag_rms: 0.04421913
+mag_range: 0.04287230
+mag_energy: 0.03729106
