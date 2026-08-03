@@ -1,4 +1,20 @@
-venv/
+# Python
 __pycache__/
-*.pt
-outputs/
+*.pyc
+
+# Virtual environment
+venv/
+
+# VS Code
+.vscode/
+
+# Raw datasets
+*.edf
+
+# Generated EDA outputs
+eda_data.csv
+eda_processed_data.csv
+eda_anomaly_windows.csv
+
+# Temporary outputs
+output/
