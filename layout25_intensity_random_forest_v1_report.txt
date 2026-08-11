@@ -1,0 +1,89 @@
+Layout25 RightWrist 3-Class Intensity Random Forest v1
+======================================================================
+
+Intensity Definition:
+
+calm:
+  1 Lying
+  2 Sitting
+  3 Standing
+  4 Slow walking
+  5 Moderate walking
+
+slightly_intense:
+  6 Brisk walking
+  7 Ascending stairs
+  8 Descending stairs
+  9 Cycling
+
+fierce:
+  10 Running
+  11 Jumping
+  12 Rowing
+
+Feature file: C:\Users\USER\Desktop\學校功課\專題\dataset\dataset\Output_RightWrist\layout25_acc_gyr_features_v1.csv
+Number of windows: 171847
+Number of features: 56
+Number of participants: 25
+
+Train participants: ['P02', 'P03', 'P04', 'P05', 'P06', 'P07', 'P08', 'P10', 'P11', 'P13', 'P14', 'P15', 'P16', 'P18', 'P19', 'P20', 'P21', 'P22', 'P23', 'P25']
+Test participants: ['P01', 'P09', 'P12', 'P17', 'P24']
+
+Training windows: 134671
+Testing windows: 37176
+
+Overall intensity distribution:
+  calm: 78906
+  slightly_intense: 49691
+  fierce: 43250
+
+Training intensity distribution:
+  calm: 60717
+  slightly_intense: 39954
+  fierce: 34000
+
+Testing intensity distribution:
+  calm: 18189
+  slightly_intense: 9737
+  fierce: 9250
+
+Accuracy: 0.884980
+Balanced Accuracy: 0.869251
+Macro F1: 0.880001
+Weighted F1: 0.884059
+
+Classification Report:
+                  precision    recall  f1-score   support
+
+            calm     0.8646    0.9401    0.9008     18189
+slightly_intense     0.8520    0.7689    0.8083      9737
+          fierce     0.9655    0.8987    0.9309      9250
+
+        accuracy                         0.8850     37176
+       macro avg     0.8940    0.8693    0.8800     37176
+    weighted avg     0.8864    0.8850    0.8841     37176
+
+Confusion Matrix Labels:
+['calm', 'slightly_intense', 'fierce']
+
+Confusion Matrix:
+[[17100   907   182]
+ [ 2135  7487   115]
+ [  543   394  8313]]
+
+Top 15 Features:
+01. acc_y_range: 0.0581243228
+02. acc_y_energy: 0.0494158542
+03. acc_y_std: 0.0476228889
+04. acc_y_rms: 0.0447657223
+05. acc_mag_std: 0.0385446855
+06. acc_y_max: 0.0313559051
+07. acc_mag_range: 0.0269578533
+08. acc_z_mean: 0.0257614964
+09. acc_mag_max: 0.0246844721
+10. gyr_mag_min: 0.0242610655
+11. acc_x_std: 0.0231595153
+12. acc_mag_rms: 0.0225329229
+13. acc_z_min: 0.0225245675
+14. acc_mag_mean: 0.0211916854
+15. gyr_mag_mean: 0.0209400482
