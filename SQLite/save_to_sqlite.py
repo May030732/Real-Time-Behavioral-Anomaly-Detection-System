@@ -6,7 +6,7 @@ import time
 DB_NAME = "anomaly_detection.db"
 
 # Serial Port 設定 (若改用藍牙，這裡指定藍牙配對後的 COM Port 即可)
-COM_PORT = 'COM4'  # 請修改為您電腦對應的 COM Port 號碼
+COM_PORT = 'COM3'  # 請修改為您電腦對應的 COM Port 號碼
 BAUD_RATE = 115200
 
 # ==================== 2. 初始化資料庫 ====================
