@@ -4,4 +4,3 @@ __pycache__/
 outputs/
 *.csv
 *.joblib
-Detection_models/model/
