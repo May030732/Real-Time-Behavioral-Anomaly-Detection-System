@@ -3,3 +3,5 @@ __pycache__/
 *.pt
 outputs/
 *.csv
+*.joblib
+Detection_models/model/
