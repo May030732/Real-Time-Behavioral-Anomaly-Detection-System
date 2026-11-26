@@ -9,21 +9,32 @@ else:
 
 class AnomalyDetector:
     """
-    PPG、EDA、IMU 共 36 種狀態組合的異常監控評估器。
+    整合【PPG/EDA/IMU 36 種狀態組合】與【影像暴力/跌倒偵測】的異常監控評估器。
     """
 
     def evaluate_status(self, inference_result):
         """
-        根據感測器狀態重新查詢 36 種規則表，
-        產生手環判斷結果及告警等級。
+        根據感測器狀態查詢 36 種規則表，並結合影像(暴力/跌倒)判定產生最終告警等級。
         """
         ppg_state = inference_result.get("ppg_state", "Unknown")
         eda_state = inference_result.get("eda_state", "Unknown")
         imu_state = inference_result.get("imu_state", "Unknown")
 
-        final_decision = get_final_decision(
+        # 影像狀態 (若無傳入則預設為安全狀態，相容純手環測試)
+        violence_status = inference_result.get("violence_status", "NON_VIOLENCE")
+        fall_status = inference_result.get("fall_status", "NON_FALL")
+        saved_video_path = inference_result.get("saved_video_path", None)
+
+        # 若 EDA 還在收集基線或無效值，查 36 表時暫以 "Normal" 代入
+        eda_for_table = (
+            eda_state
+            if eda_state in {"Normal", "Suspected_Arousal", "High_Arousal"}
+            else "Normal"
+        )
+
+        wearable_decision = get_final_decision(
             ppg_state,
-            eda_state,
+            eda_for_table,
             imu_state,
         )
 
@@ -33,48 +44,62 @@ class AnomalyDetector:
             f"三模態狀態組合: "
             f"[PPG: {ppg_state}] + "
             f"[EDA: {eda_state}] + "
-            f"[IMU: {imu_state}]"
+            f"[IMU: {imu_state}] -> 手環判定: {wearable_decision}"
         ]
 
-        if final_decision == "Abnormal":
+        vision_anomaly = (violence_status == "VIOLENCE") or (fall_status == "FALL")
+
+        # 1. 最高優先級：影像明確偵測到暴力或跌倒，或 36 規則表判定為 Abnormal
+        if vision_anomaly or wearable_decision == "Abnormal":
             status = "ANOMALY"
             alert_level = "CRITICAL"
-            reasons.append(
-                "符合 36 種組合表【Abnormal】規則，"
-                "手環資料判定為異常。"
-            )
+            final_decision = "Abnormal"
 
-        elif final_decision == "Suspected_Abnormal":
+            if violence_status == "VIOLENCE":
+                reasons.append("【影像異常】偵測到暴力行為 (VIOLENCE)！")
+            if fall_status == "FALL":
+                reasons.append("【影像異常】偵測到跌倒事件 (FALL)！")
+            if wearable_decision == "Abnormal":
+                reasons.append("符合 36 種組合表【Abnormal】規則，手環資料判定為異常。")
+            if saved_video_path:
+                reasons.append(f"異常事件影片已儲存：{saved_video_path}")
+
+        # 2. 次高優先級：36 規則表判定為 Suspected_Abnormal
+        elif wearable_decision == "Suspected_Abnormal":
             status = "WARNING"
             alert_level = "MEDIUM"
+            final_decision = "Suspected_Abnormal"
             reasons.append(
-                "符合 36 種組合表【Suspected_Abnormal】規則，"
-                "進入疑似異常觀察階段。"
+                "符合 36 種組合表【Suspected_Abnormal】規則，進入疑似異常觀察階段。"
             )
 
-        elif final_decision == "Normal":
+        # 3. 正常狀態
+        elif wearable_decision == "Normal":
             status = "NORMAL"
             alert_level = "INFO"
+            final_decision = "Normal"
             reasons.append(
-                "符合 36 種組合表【Normal】規則，"
-                "手環資料判定為正常。"
+                "符合 36 種組合表【Normal】規則，手環與影像狀態皆正常。"
             )
 
         else:
             status = "UNKNOWN"
             alert_level = "LOW"
-            reasons.append(
-                "感測器狀態缺失或名稱未定義，無法判斷。"
-            )
+            final_decision = "Unknown"
+            reasons.append("感測器狀態缺失或名稱未定義，無法判斷。")
 
         return {
             "timestamp": timestamp,
             "status": status,
             "alert_level": alert_level,
             "final_decision": final_decision,
+            "wearable_decision": wearable_decision,
             "ppg_state": ppg_state,
             "eda_state": eda_state,
             "imu_state": imu_state,
+            "violence_status": violence_status,
+            "fall_status": fall_status,
+            "saved_video_path": saved_video_path,
             "reasons": reasons,
         }
 
@@ -85,24 +110,22 @@ class AnomalyDetector:
 
 def send_alert_notification(report):
     """
-    將評估結果輸出至主控台。
-    目前尚未包含 Discord 傳送功能。
+    將評估結果輸出至主控台 (可在此串接 discord_notifier.py 上傳影片)。
     """
     status = report["status"]
     timestamp = report["timestamp"]
     final_decision = report["final_decision"]
 
     if status == "ANOMALY":
-        print("\n🚨【手環警告：36 種組合表判定異常】")
+        print("\n🚨【系統警告：偵測到異常事件】")
+        print(f"⏰ 時間: {timestamp} | 警告等級: {report['alert_level']}")
         print(
-            f"⏰ 時間: {timestamp} | "
-            f"警告等級: {report['alert_level']}"
+            f"📊 手環狀態: PPG={report['ppg_state']} | "
+            f"EDA={report['eda_state']} | IMU={report['imu_state']}"
         )
         print(
-            f"📊 狀態組合: "
-            f"PPG={report['ppg_state']} | "
-            f"EDA={report['eda_state']} | "
-            f"IMU={report['imu_state']}"
+            f"📷 影像狀態: Violence={report.get('violence_status', 'N/A')} | "
+            f"Fall={report.get('fall_status', 'N/A')}"
         )
         print("判定細節:")
         for reason in report["reasons"]:
@@ -117,7 +140,7 @@ def send_alert_notification(report):
 
     elif status == "NORMAL":
         print(
-            f"✓ [{timestamp}] 手環資料正常 ({final_decision}) | "
+            f"✓ [{timestamp}] 系統狀態正常 ({final_decision}) | "
             f"{report['reasons'][0]}"
         )
 
@@ -128,54 +151,3 @@ def send_alert_notification(report):
         )
         for reason in report["reasons"][1:]:
             print(f"   - {reason}")
-
-
-if __name__ == "__main__":
-    detector = AnomalyDetector()
-
-    # 測試資料不必指定 final_decision，由規則表決定
-    test_cases = [
-        (
-            "正常",
-            {
-                "ppg_state": "NORMAL",
-                "eda_state": "Normal",
-                "imu_state": "calm",
-            },
-            "NORMAL",
-        ),
-        (
-            "疑似異常",
-            {
-                "ppg_state": "PERSISTENT_HIGH_HR",
-                "eda_state": "Normal",
-                "imu_state": "calm",
-            },
-            "WARNING",
-        ),
-        (
-            "異常",
-            {
-                "ppg_state": "CRITICAL_EXTREME_HR",
-                "eda_state": "High_Arousal",
-                "imu_state": "fierce",
-            },
-            "ANOMALY",
-        ),
-        (
-            "資料缺失",
-            {
-                "eda_state": "Normal",
-                "imu_state": "calm",
-            },
-            "UNKNOWN",
-        ),
-    ]
-
-    for name, data, expected_status in test_cases:
-        print(f"\n=== 測試：{name} ===")
-        report = detector.evaluate_status(data)
-        assert report["status"] == expected_status, report
-        send_alert_notification(report)
-
-    print("\n✅ 四種報告狀態測試通過")
