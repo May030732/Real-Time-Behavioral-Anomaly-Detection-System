@@ -7,37 +7,56 @@ import numpy as np
 
 
 # ============================================================
-# 指向 multimodal_project/weights/ 內的模型檔
+# 自動搜尋 IMU 模型路徑 (相容截圖的 model/、weights/ 與隊友原電腦絕對路徑)
 # ============================================================
-MODEL_FILE = Path("weights/layout25_intensity_random_forest_v1.joblib")
+BASE_DIR = Path(__file__).resolve().parent
+IMU_WINDOW_SIZE = 120  # 60Hz * 2s
 
-VALID_LABELS = {
+SEARCH_MODEL_PATHS = [
+    BASE_DIR / "model" / "layout25_intensity_random_forest_v1.joblib",
+    BASE_DIR / "weights" / "layout25_intensity_random_forest_v1.joblib",
+    Path(
+        r"C:\Users\USER\Desktop\學校功課\專題\dataset\dataset\Output_RightWrist\layout25_intensity_model_results\layout25_intensity_random_forest_v1.joblib"
+    ),
+]
+
+VALID_IMU_LABELS = {
     "calm",
     "slightly_intense",
     "fierce",
 }
 
 _MODEL_PACKAGE = None
+_LOADED_MODEL_PATH = None
 _FALLBACK_WARNED = False
 
 
+def _resolve_model_file():
+    for path in SEARCH_MODEL_PATHS:
+        if path.exists():
+            return path
+    return None
+
+
 def load_model():
-    global _MODEL_PACKAGE, _FALLBACK_WARNED
+    global _MODEL_PACKAGE, _LOADED_MODEL_PATH, _FALLBACK_WARNED
 
     if _MODEL_PACKAGE is not None:
         return _MODEL_PACKAGE
 
-    # 若尚未放入隊友的 .joblib 檔，回傳 None 以啟用物理 G 值後備判定，避免程式當機
-    if not MODEL_FILE.exists():
+    model_path = _resolve_model_file()
+
+    # 若三處路徑皆尚未放入 .joblib 檔，回傳 None 啟用物理 G 值後備判定
+    if model_path is None:
         if not _FALLBACK_WARNED:
             print(
-                f"⚠️ 尚未找到 IMU 模型檔 ({MODEL_FILE})，"
+                "⚠️ 尚未在 model/、weights/ 或預設桌面路徑找到 IMU 模型檔，"
                 "暫時啟用三軸加速度 G 值後備判定。"
             )
             _FALLBACK_WARNED = True
         return None
 
-    package = joblib.load(MODEL_FILE)
+    package = joblib.load(model_path)
 
     if not isinstance(package, dict):
         raise ValueError("模型檔格式不正確：預期 joblib 內容為 dictionary。")
@@ -48,6 +67,7 @@ def load_model():
         raise ValueError(f"模型檔缺少必要欄位：{sorted(missing_keys)}")
 
     _MODEL_PACKAGE = package
+    _LOADED_MODEL_PATH = model_path
     return _MODEL_PACKAGE
 
 
@@ -109,7 +129,7 @@ def build_feature_dict(acc_x, acc_y, acc_z, gyr_x, gyr_y, gyr_z):
 
     package = load_model()
     if package is not None:
-        expected_window_size = package.get("window_size")
+        expected_window_size = package.get("window_size", IMU_WINDOW_SIZE)
         if expected_window_size is not None and window_length != int(expected_window_size):
             raise ValueError(
                 f"IMU window 長度不符：收到 {window_length} 筆，預期 {expected_window_size} 筆。"
@@ -155,7 +175,7 @@ def predict_from_feature_dict(feature_dict, return_probabilities=False):
     x = np.asarray([feature_vector], dtype=np.float32)
 
     status = str(model.predict(x)[0])
-    if status not in VALID_LABELS:
+    if status not in VALID_IMU_LABELS:
         raise ValueError(f"模型輸出了未知狀態：{status}")
 
     if not return_probabilities:
@@ -222,24 +242,23 @@ def predict_imu_rows(rows, return_probabilities=False):
 def get_model_info():
     package = load_model()
 
-    # 無模型時回傳預設相容資訊
     if package is None:
         return {
             "model_file": "Fallback_G_Rule (未載入 .joblib)",
-            "labels": sorted(VALID_LABELS),
+            "labels": sorted(VALID_IMU_LABELS),
             "sampling_rate": 60,
             "window_seconds": 2,
-            "window_size": 120,
+            "window_size": IMU_WINDOW_SIZE,
             "sensor_location": "RightWrist",
             "number_of_features": 56,
         }
 
     return {
-        "model_file": str(MODEL_FILE),
-        "labels": package.get("labels", sorted(VALID_LABELS)),
+        "model_file": str(_LOADED_MODEL_PATH),
+        "labels": package.get("labels", sorted(VALID_IMU_LABELS)),
         "sampling_rate": package.get("sampling_rate"),
         "window_seconds": package.get("window_seconds"),
-        "window_size": package.get("window_size"),
+        "window_size": package.get("window_size", IMU_WINDOW_SIZE),
         "sensor_location": package.get("sensor_location"),
         "number_of_features": len(package["feature_names"]),
     }
