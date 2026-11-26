@@ -1,4 +1,5 @@
 import csv
+import json
 import math
 import os
 import sqlite3
@@ -10,6 +11,7 @@ from pathlib import Path
 
 import joblib
 import numpy as np
+import requests
 
 # ============================================================
 # 1. 系統設定與路徑
@@ -47,7 +49,13 @@ PPG_MAX_2MIN_BUFFER = 8           # 最多累積 8 個視窗 (2分鐘)
 PPG_PERSISTENT_HIGH = 100
 PPG_REQUIRED_HIGH_WINDOWS = 4     # 連續 4 個視窗 (1分鐘)
 
+# Discord Webhook 設定
+DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1555802237027221564/UGeo5apvhBmYSivo-9ErF2OiF3Sh3EEgZGXnuylzWV9q358tRoDYv4kGkK17Xw2BEdx1"
+ALERT_COOLDOWN_SECONDS = 30  # 相同或連續告警間隔時間（秒），避免頻繁洗版
+CRITICAL_ALERT_DECISIONS = {"Medical_Emergency", "Emotional_Stress"}
+
 last_processed_imu_id = 0
+last_alert_time = 0.0
 
 
 # ============================================================
@@ -90,7 +98,7 @@ class EDAModule:
 
 
 # ============================================================
-# 3. PPG 三層視窗檢測模組 (全新重構)
+# 3. PPG 三層視窗檢測模組
 # ============================================================
 class PPGModule:
     def __init__(self):
@@ -232,7 +240,7 @@ class IMUModule:
 
 
 # ============================================================
-# 5. 資料庫存取與決策融合輔助函式
+# 5. 資料庫存取、Discord 通報與決策融合輔助函式
 # ============================================================
 def init_result_database():
     """在 detection_result.db 建立 results 資料表"""
@@ -334,6 +342,74 @@ def evaluate_fusion_decision(imu_st, ppg_st, eda_st):
         return "Normal"
 
 
+def send_discord_alert(decision, imu_st, ppg_val, ppg_st, eda_val, eda_st, timestamp_str):
+    """透過 Discord Webhook 發送異常危險狀態通知"""
+    global last_alert_time
+
+    if not DISCORD_WEBHOOK_URL or "YOUR_WEBHOOK_ID" in DISCORD_WEBHOOK_URL:
+        return
+
+    now = time.time()
+    if now - last_alert_time < ALERT_COOLDOWN_SECONDS:
+        return
+
+    # 醫療緊急為紅色，情緒壓力為橙黃色
+    color_code = 0xFF0000 if decision == "Medical_Emergency" else 0xFFA500
+
+    payload = {
+        "content": "⚠️ **【穿戴式異常偵測系統 - 緊急警告】** ⚠️",
+        "embeds": [
+            {
+                "title": f"🚨 偵測到異常狀態：{decision}",
+                "color": color_code,
+                "fields": [
+                    {
+                        "name": "📊 決策判定",
+                        "value": f"`{decision}`",
+                        "inline": False
+                    },
+                    {
+                        "name": "❤️ 心率 (PPG)",
+                        "value": f"數值: `{ppg_val:.1f} BPM`\n狀態: `{ppg_st}`",
+                        "inline": True
+                    },
+                    {
+                        "name": "⚡ 皮膚電導 (EDA)",
+                        "value": f"數值: `{eda_val:.1f}`\n狀態: `{eda_st}`",
+                        "inline": True
+                    },
+                    {
+                        "name": "🏃 動作強度 (IMU)",
+                        "value": f"狀態: `{imu_st}`",
+                        "inline": True
+                    }
+                ],
+                "footer": {
+                    "text": "穿戴式多模態生理與行為異常偵測系統"
+                },
+                "timestamp": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+            }
+        ]
+    }
+
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        response = requests.post(
+            DISCORD_WEBHOOK_URL,
+            data=json.dumps(payload),
+            headers=headers,
+            timeout=5
+        )
+        if response.status_code in [200, 204]:
+            print(f"[Discord Alert] 警告已成功發送：{decision}")
+            last_alert_time = now
+        else:
+            print(f"[Discord Alert] 發送失敗 (HTTP {response.status_code}): {response.text}")
+    except Exception as e:
+        print(f"[Discord Alert] 連線錯誤: {e}")
+
+
 def save_detection_result(timestamp_str, latest_id, imu_st, ppg_val, ppg_st, eda_val, eda_st, decision):
     """將判定結果寫入 detection_result.db"""
     try:
@@ -351,9 +427,9 @@ def save_detection_result(timestamp_str, latest_id, imu_st, ppg_val, ppg_st, eda
         print(f"[Save Warning] 寫入 detection_result.db 失敗: {e}")
 
 
-# ==========================================
+# ============================================================
 # 6. 主程式
-# ==========================================
+# ============================================================
 def main():
     global last_processed_imu_id
 
@@ -418,7 +494,19 @@ def main():
                 })
                 csv_file.flush()
 
-                # 5. 更新索引與終端機輸出
+                # 5. Discord Webhook 異常狀態通報
+                if final_decision in CRITICAL_ALERT_DECISIONS:
+                    send_discord_alert(
+                        decision=final_decision,
+                        imu_st=imu_status,
+                        ppg_val=ppg_val,
+                        ppg_st=ppg_status,
+                        eda_val=eda_val,
+                        eda_st=eda_status,
+                        timestamp_str=current_time
+                    )
+
+                # 6. 更新索引與終端機輸出
                 last_processed_imu_id = data["latest_imu_id"]
                 print(
                     f"[{datetime.now().strftime('%H:%M:%S')}] ID:{last_processed_imu_id:<6} | "
