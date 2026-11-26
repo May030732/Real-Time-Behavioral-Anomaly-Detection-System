@@ -1,76 +1,98 @@
+import threading
 import time
 import numpy as np
-from main_inference import MultimodalStressPredictor
-from anomaly_monitor import AnomalyDetector, send_alert_notification
 
-# ----------------------------------------------------
-# 1. 手環 raw 資料處理器 (Preprocess Engine)
-# ----------------------------------------------------
+import imu_test
+from anomaly_monitor import send_alert_notification
+
+
 class WristbandDataProcessor:
-    def __init__(self):
-        pass
+    def __init__(self, imu_window_size=120):
+        self.imu_window_size = imu_window_size
 
     def extract_ppg_19_features(self, raw_ppg_wave):
         """
-        將手環傳入的 PPG 原始波形轉換為 19 項 HRV 特徵
-        (實務上會呼叫 HeartPy 或 NeuroKit2 進行峰值檢測與特徵計算)
+        將手環傳入的 PPG 原始波形轉換為 19 項 HRV 特徵。
         """
-        # 模擬即時特徵提取，動態產生心率數值 (index 6: HR) 供 27 種真值表測試
-        # 預設正常心率 75.0 BPM
         hr_value = 75.0 + np.random.uniform(-5.0, 5.0)
-        
         calculated_hrv = np.array([
             800.5, 790.0, 45.2, 32.1, 20.5, 1.4, hr_value, 15.2, 5.4, 3.1, 0.2,
             1.01, 1.00, 0.05, 0.04, 0.02, 1.25, 2.9, 0.1
         ])
         return calculated_hrv.reshape(1, 19)
 
-    def process_eda_wave(self, raw_eda_wave):
-        """將 EDA 波形進行濾波並裁切為 (1, 1, 1000)"""
-        return np.array(raw_eda_wave, dtype=np.float32).reshape(1, 1, -1)
+    def get_latest_eda_value(self, raw_eda_stream):
+        """
+        隊友 EDADetector.detect_eda(current_eda) 接收單筆最新 EDA 數值 (float)。
+        """
+        return float(raw_eda_stream[-1])
 
-    def process_imu_wave(self, raw_imu_acc_gyro):
-        """將 IMU 6 軸數據 (AccXYZ + GyroXYZ) 格式化為 (1, 6, 1000)"""
-        return np.array(raw_imu_acc_gyro, dtype=np.float32).reshape(1, 6, -1)
+    def format_imu_rows(self, raw_imu_acc_gyro):
+        """
+        隊友 imu_test.predict_imu_rows(rows) 接收 [[acc_x, acc_y, acc_z, gyr_x, gyr_y, gyr_z], ...]
+        預設長度為 120 筆 (60Hz * 2s)。
+        """
+        arr = np.asarray(raw_imu_acc_gyro, dtype=np.float32)
+        if arr.shape[0] == 6 and arr.shape[1] != 6:
+            arr = arr.T  # 轉為 (N, 6)
+        return arr[-self.imu_window_size:].tolist()
 
 
-# ----------------------------------------------------
-# 2. 即時串流資料結合與 27 種真值表查表通報主迴圈
-# ----------------------------------------------------
-def start_wristband_stream_monitoring():
-    # 初始化處理器、預測器與異常監控器
-    processor = WristbandDataProcessor()
-    predictor = MultimodalStressPredictor(weights_dir="weights")
-    detector = AnomalyDetector()
+class WearableStreamWorker:
+    """
+    背景執行緒手環串流處理器，與主程式 Camera 迴圈平行執行。
+    """
 
-    print("\n🚀 開始接收手環即時數據串流與 27 種真值表查表監控 (按 Ctrl+C 結束)...")
+    def __init__(self, predictor, detector, interval_sec=2.0):
+        self.predictor = predictor
+        self.detector = detector
+        self.interval_sec = interval_sec
 
-    try:
-        while True:
-            # --- Step A: 模擬接收手環傳來的原始 Sensor 數據 ---
-            # (未來替換為真實串口/藍牙讀取的原始陣列)
-            raw_ppg_stream = np.random.randn(1000) 
-            raw_eda_stream = np.random.randn(1000)
-            raw_imu_stream = np.random.randn(6, 1000) * 0.1  # 預設動態較為平穩
+        imu_win = imu_test.get_model_info().get("window_size") or 120
+        self.processor = WristbandDataProcessor(imu_window_size=imu_win)
 
-            # --- Step B: 資料結合與預處理轉換 ---
-            ppg_19_feats = processor.extract_ppg_19_features(raw_ppg_stream)
-            eda_formatted = processor.process_eda_wave(raw_eda_stream)
-            imu_formatted = processor.process_imu_wave(raw_imu_stream)
+        self._stop_event = threading.Event()
+        self._lock = threading.Lock()
+        self._latest_state = {
+            "ppg_state": "NORMAL",
+            "eda_state": "Normal",
+            "imu_state": "calm",
+            "final_decision": "Normal",
+        }
 
-            # --- Step C: 多模態推論與 27 種組合查表 ---
-            # 回傳包含 ppg_state, eda_state, imu_state, final_decision 的字典
-            prediction = predictor.predict(ppg_19_feats, eda_formatted, imu_formatted)
+    def get_latest_state(self):
+        with self._lock:
+            return dict(self._latest_state)
 
-            # --- Step D: 評估 27 種真值表查表結果並發布通報 ---
-            report = detector.evaluate_status(prediction)
+    def stop(self):
+        self._stop_event.set()
+
+    def run(self):
+        print("\n🚀 [背景執行緒] 開始接收手環數據串流與 36 種真值表查表監控...")
+        imu_win = self.processor.imu_window_size
+
+        while not self._stop_event.is_set():
+            # TODO: 替換為真實 ESP32 串口/藍牙讀取的感測器緩衝區
+            raw_ppg_stream = np.random.randn(1000)
+            current_eda_val = float(np.random.uniform(0.3, 0.5))
+            raw_imu_rows = np.random.randn(imu_win, 6) * 0.1
+
+            ppg_19_feats = self.processor.extract_ppg_19_features(raw_ppg_stream)
+            imu_rows = self.processor.format_imu_rows(raw_imu_rows)
+
+            # 呼叫整合後的手環預測器 (PPG 4類 + 隊友 EDA + 隊友 IMU + 36規則表)
+            prediction = self.predictor.predict(
+                ppg_raw=ppg_19_feats,
+                current_eda_value=current_eda_val,
+                imu_rows=imu_rows,
+            )
+
+            with self._lock:
+                self._latest_state = prediction
+
+            report = self.detector.evaluate_status(prediction)
             send_alert_notification(report)
 
-            # 模擬手環每 2 秒傳送一次滑動視窗數據
-            time.sleep(2)
+            self._stop_event.wait(self.interval_sec)
 
-    except KeyboardInterrupt:
-        print("\n已停止手環數據串流監控。")
-
-if __name__ == "__main__":
-    start_wristband_stream_monitoring()
+        print("已停止手環數據串流背景執行緒。")
