@@ -7,7 +7,7 @@ import numpy as np
 
 
 # ============================================================
-# 修改處：改為相對路徑，指向 multimodal_project/weights/ 內的模型檔
+# 指向 multimodal_project/weights/ 內的模型檔
 # ============================================================
 MODEL_FILE = Path("weights/layout25_intensity_random_forest_v1.joblib")
 
@@ -18,20 +18,24 @@ VALID_LABELS = {
 }
 
 _MODEL_PACKAGE = None
+_FALLBACK_WARNED = False
 
 
 def load_model():
-    global _MODEL_PACKAGE
+    global _MODEL_PACKAGE, _FALLBACK_WARNED
 
     if _MODEL_PACKAGE is not None:
         return _MODEL_PACKAGE
 
+    # 若尚未放入隊友的 .joblib 檔，回傳 None 以啟用物理 G 值後備判定，避免程式當機
     if not MODEL_FILE.exists():
-        raise FileNotFoundError(
-            "找不到 IMU 模型檔：\n"
-            f"{MODEL_FILE}\n\n"
-            "請確認 layout25_intensity_random_forest_v1.joblib 已放入 weights/ 資料夾。"
-        )
+        if not _FALLBACK_WARNED:
+            print(
+                f"⚠️ 尚未找到 IMU 模型檔 ({MODEL_FILE})，"
+                "暫時啟用三軸加速度 G 值後備判定。"
+            )
+            _FALLBACK_WARNED = True
+        return None
 
     package = joblib.load(MODEL_FILE)
 
@@ -104,11 +108,12 @@ def build_feature_dict(acc_x, acc_y, acc_z, gyr_x, gyr_y, gyr_z):
         raise ValueError("IMU window 是空的。")
 
     package = load_model()
-    expected_window_size = package.get("window_size")
-    if expected_window_size is not None and window_length != int(expected_window_size):
-        raise ValueError(
-            f"IMU window 長度不符：收到 {window_length} 筆，預期 {expected_window_size} 筆。"
-        )
+    if package is not None:
+        expected_window_size = package.get("window_size")
+        if expected_window_size is not None and window_length != int(expected_window_size):
+            raise ValueError(
+                f"IMU window 長度不符：收到 {window_length} 筆，預期 {expected_window_size} 筆。"
+            )
 
     signals["acc_mag"] = calculate_magnitude(
         signals["acc_x"], signals["acc_y"], signals["acc_z"]
@@ -136,6 +141,9 @@ def build_feature_dict(acc_x, acc_y, acc_z, gyr_x, gyr_y, gyr_z):
 
 def predict_from_feature_dict(feature_dict, return_probabilities=False):
     package = load_model()
+    if package is None:
+        raise RuntimeError("IMU 模型尚未載入，無法使用特徵字典進行模型推論。")
+
     model = package["model"]
     feature_names = package["feature_names"]
 
@@ -167,6 +175,20 @@ def predict_from_feature_dict(feature_dict, return_probabilities=False):
 def predict_imu_window(
     acc_x, acc_y, acc_z, gyr_x, gyr_y, gyr_z, return_probabilities=False
 ):
+    package = load_model()
+
+    # 無模型時的物理 G 值後備判定
+    if package is None:
+        mags = calculate_magnitude(acc_x, acc_y, acc_z)
+        max_g = max(mags) if mags else 0.0
+        if max_g < 1.2:
+            status = "calm"
+        elif max_g <= 2.5:
+            status = "slightly_intense"
+        else:
+            status = "fierce"
+        return (status, {}) if return_probabilities else status
+
     feature_dict = build_feature_dict(acc_x, acc_y, acc_z, gyr_x, gyr_y, gyr_z)
     return predict_from_feature_dict(
         feature_dict, return_probabilities=return_probabilities
@@ -199,6 +221,19 @@ def predict_imu_rows(rows, return_probabilities=False):
 
 def get_model_info():
     package = load_model()
+
+    # 無模型時回傳預設相容資訊
+    if package is None:
+        return {
+            "model_file": "Fallback_G_Rule (未載入 .joblib)",
+            "labels": sorted(VALID_LABELS),
+            "sampling_rate": 60,
+            "window_seconds": 2,
+            "window_size": 120,
+            "sensor_location": "RightWrist",
+            "number_of_features": 56,
+        }
+
     return {
         "model_file": str(MODEL_FILE),
         "labels": package.get("labels", sorted(VALID_LABELS)),
